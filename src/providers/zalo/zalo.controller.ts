@@ -1,15 +1,14 @@
 import {
   Body,
   Controller,
-  Get,
+  ForbiddenException,
+  Headers,
   HttpCode,
   HttpStatus,
   Logger,
-  Param,
   Post,
-  Res,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { ConfigService } from '@nestjs/config';
 import { ZaloWebhookDto } from '../../dtos/zalo/zalo-webhook.dto';
 import { ZaloService } from './zalo.service';
 
@@ -17,30 +16,21 @@ import { ZaloService } from './zalo.service';
 export class ZaloController {
   private readonly logger = new Logger(ZaloController.name);
 
-  constructor(private readonly zaloService: ZaloService) {}
-
-  @Get('webhook')
-  checkWebhook() {
-    return { status: 'ok' };
-  }
-
-  @Get(['webhook/zalo_verifier:token.html', 'zalo_verifier:token.html'])
-  serveVerifier(@Param('token') token: string, @Res() response: Response): void {
-    const safeToken = token.replace(/[&<>"']/g, '');
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta property="zalo-platform-site-verification" content="${safeToken}" />
-</head>
-<body>Zalo domain verification</body>
-</html>`;
-
-    response.type('html').send(html);
-  }
+  constructor(
+    private readonly zaloService: ZaloService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
-  async receiveWebhook(@Body() payload: ZaloWebhookDto) {
+  async receiveWebhook(
+    @Body() payload: ZaloWebhookDto,
+    @Headers('x-bot-api-secret-token') secretToken?: string,
+  ) {
+    
+    this.logger.log(`Zalo webhook received: ${JSON.stringify(payload)}`);
+    // this.verifySecretToken(secretToken);
+
     try {
       const messageCount = await this.zaloService.handleWebhook(payload);
       return {
@@ -51,6 +41,21 @@ export class ZaloController {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Zalo reply failed: ${message}`);
       return { status: 'received', replyStatus: 'failed' };
+    }
+  }
+
+  private verifySecretToken(receivedToken?: string): void {
+    const configuredToken =
+      this.configService.get<string>('ZALO_BOT_SECRET_TOKEN') ??
+      this.configService.get<string>('ZALO_WEBHOOK_SECRET');
+
+    if (!configuredToken) {
+      throw new Error('ZALO_BOT_SECRET_TOKEN is not configured');
+    }
+
+    if (receivedToken !== configuredToken) {
+      this.logger.warn('Rejected Zalo webhook with invalid secret token');
+      throw new ForbiddenException('Invalid Zalo webhook secret token');
     }
   }
 }

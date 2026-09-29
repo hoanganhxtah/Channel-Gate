@@ -7,10 +7,14 @@ export function initAxiosRequestWithTrace() {
     (config: InternalAxiosRequestConfig): InternalAxiosRequestConfig => {
       const span = getCurrentSpan()
       if (span) {
+        const sanitizedUrl = config.url?.replace(/\/bot[^/]+\//, '/bot***/');
+        const sanitizedParams = config.params
+          ? { ...config.params, access_token: undefined }
+          : undefined;
         const attributes: Record<string, any> = {
-          "http.url": config.url,
+          "http.url": sanitizedUrl,
           "http.method": config.method?.toUpperCase(),
-          "http.request.query": config.params,
+          "http.request.query": sanitizedParams,
           "kind": SpanKind.CLIENT
         }
 

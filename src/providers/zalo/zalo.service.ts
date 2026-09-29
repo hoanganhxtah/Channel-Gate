@@ -14,10 +14,13 @@ export class ZaloService {
   ) {}
 
   async handleWebhook(payload: ZaloWebhookDto): Promise<number> {
-    const recipientId = payload.sender?.id;
+    const recipientId = payload.message?.chat?.id ?? payload.message?.from?.id;
     const message = payload.message?.text?.trim();
 
     if (!recipientId || !message) {
+      this.logger.warn(
+        `Ignored Zalo webhook event ${payload.event_name ?? 'unknown'}: no text message or chat id`,
+      );
       return 0;
     }
 
@@ -29,27 +32,28 @@ export class ZaloService {
   }
 
   private async sendReply(recipientId: string, text: string): Promise<void> {
-    const url =
-      this.configService.get<string>('ZALO_REPLY_API_URL') ??
-      this.configService.getOrThrow<string>('ZALO_REPLY_APIC_URL');
-    const accessToken = this.configService.getOrThrow<string>(
-      'ZALO_ACCESS_TOKEN',
-    );
+    const apiUrl = this.configService
+      .get<string>('ZALO_BOT_API_URL', 'https://bot-api.zaloplatforms.com')
+      .replace(/\/$/, '');
+    const botToken = this.configService.getOrThrow<string>('ZALO_BOT_TOKEN');
+    const url = `${apiUrl}/bot${botToken}/sendMessage`;
 
     try {
-      await axios.post(
+      const response = await axios.post(
         url,
         {
-          recipient: { user_id: recipientId },
-          message: { text },
-        },
-        {
-          headers: {
-            access_token: accessToken,
-            'Content-Type': 'application/json',
-          },
+          chat_id: recipientId,
+          text,
         },
       );
+
+      if (!response.data?.ok) {
+        throw new HttpException(
+          response.data?.description ?? 'Zalo Bot API rejected the message',
+          HttpStatus.BAD_GATEWAY,
+        );
+      }
+
       this.logger.log(`Zalo reply sent to ${recipientId}`);
     } catch (error) {
       if (axios.isAxiosError(error)) {

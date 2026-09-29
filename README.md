@@ -27,7 +27,6 @@ GET  /facebook/webhook
 POST /facebook/webhook
 GET  /instagram/webhook
 POST /instagram/webhook
-GET  /zalo/webhook
 POST /zalo/webhook
 ```
 
