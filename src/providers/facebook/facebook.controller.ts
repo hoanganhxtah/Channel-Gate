@@ -33,24 +33,35 @@ export class FacebookController {
     );
 
     if (mode === 'subscribe' && verifyToken === configuredToken) {
+      this.logger.log('[Facebook] Webhook challenge verified successfully');
       return challenge;
     }
 
+    this.logger.warn(`[Facebook] Webhook verification failed (received token: ${verifyToken})`);
     throw new ForbiddenException('Invalid Facebook verification request');
   }
 
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
   async receiveWebhook(@Body() payload: FacebookWebhookDto) {
+    const entriesCount = payload.entry?.length ?? 0;
+    this.logger.log(
+      `[Facebook] Webhook received | Object: "${payload.object || 'unknown'}" | Entries: ${entriesCount}`,
+    );
+
     try {
       const messageCount = await this.facebookService.handleWebhook(payload);
+      const status = messageCount > 0 ? 'received' : 'ignored';
+      this.logger.log(
+        `[Facebook] Webhook handled with status: ${status} (processed: ${messageCount})`,
+      );
       return {
-        status: messageCount > 0 ? 'received' : 'ignored',
+        status,
         messageCount,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Facebook reply failed: ${message}`);
+      this.logger.error(`[Facebook] Webhook processing failed: ${message}`);
       return { status: 'received', replyStatus: 'failed' };
     }
   }

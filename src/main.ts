@@ -14,18 +14,20 @@ async function bootstrap() {
       console.log('OpenTelemetry tracing initialized successfully');
     }
     initAxiosRequestWithTrace();
-
   } catch (e) {
     console.error('Failed to initialize OpenTelemetry tracing:', e);
     throw new Error(`Failed to initialize OpenTelemetry tracing: ${e}`);
   }
 
-  const app = await NestFactory.create(AppModule);
-  app.useLogger(app.get(LoggerService));
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const logger = app.get(LoggerService);
+  app.useLogger(logger);
   app.enableCors();
   app.useGlobalPipes(new ValidationPipe());
+
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT') ?? 3000;
   await app.listen(port);
+  logger.log(`Channel-Gate server is listening on port ${port}`, 'Bootstrap');
 }
 bootstrap();

@@ -27,19 +27,24 @@ export class ZaloController {
     @Body() payload: ZaloWebhookDto,
     @Headers('x-bot-api-secret-token') secretToken?: string,
   ) {
-    
-    this.logger.log(`Zalo webhook received: ${JSON.stringify(payload)}`);
+    const eventName = payload.event_name ?? 'unknown';
+    const sender = payload.message?.from?.display_name || payload.message?.from?.id || 'Unknown';
+    this.logger.log(
+      `[Zalo] Webhook received | Event: "${eventName}" | Sender: "${sender}" | MsgId: ${payload.message?.message_id || 'N/A'}`,
+    );
     // this.verifySecretToken(secretToken);
 
     try {
       const messageCount = await this.zaloService.handleWebhook(payload);
+      const status = messageCount > 0 ? 'received' : 'ignored';
+      this.logger.log(`[Zalo] Webhook handled with status: ${status} (processed: ${messageCount})`);
       return {
-        status: messageCount > 0 ? 'received' : 'ignored',
+        status,
         messageCount,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Zalo reply failed: ${message}`);
+      this.logger.error(`[Zalo] Webhook handling failed: ${message}`);
       return { status: 'received', replyStatus: 'failed' };
     }
   }
@@ -54,7 +59,7 @@ export class ZaloController {
     }
 
     if (receivedToken !== configuredToken) {
-      this.logger.warn('Rejected Zalo webhook with invalid secret token');
+      this.logger.warn('[Zalo] Rejected webhook with invalid secret token');
       throw new ForbiddenException('Invalid Zalo webhook secret token');
     }
   }
