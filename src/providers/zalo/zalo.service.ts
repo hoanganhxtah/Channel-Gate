@@ -2,7 +2,7 @@ import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { ZaloWebhookDto } from '../../dtos/zalo/zalo-webhook.dto';
-import { ReplyMessageService } from '../../services/reply-message/reply-message.service';
+import { AgentClientService } from '../../services/agent-client/agent-client.service';
 
 @Injectable()
 export class ZaloService {
@@ -10,7 +10,7 @@ export class ZaloService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly replyMessageService: ReplyMessageService,
+    private readonly agentClientService: AgentClientService,
   ) {}
 
   async handleWebhook(payload: ZaloWebhookDto): Promise<number> {
@@ -21,23 +21,32 @@ export class ZaloService {
     const message = payload.message?.text?.trim();
     const messageId = payload.message?.message_id;
 
-    if (!recipientId || !message) {
+    if (!recipientId || !senderId || !message) {
       this.logger.warn(
-        `[Zalo] Ignored event "${eventName}": missing chat ID or text (recipientId=${recipientId || 'N/A'}, text=${Boolean(message)})`,
+        `[Zalo] Ignored event "${eventName}": missing chat ID, sender ID or text (recipientId=${recipientId || 'N/A'}, senderId=${senderId || 'N/A'}, text=${Boolean(message)})`,
       );
       return 0;
     }
+
+    const channelId = this.configService.getOrThrow<string>('ZALO_CHANNEL_ID');
 
     this.logger.log(
       `[Zalo] Inbound message | User: "${senderName}" (id: ${senderId}, chat: ${recipientId}) | MsgId: ${messageId || 'N/A'} | Text: "${message}"`,
     );
 
-    const replyText = this.replyMessageService.create(message);
+    const threadId = `zalo:${channelId}:${senderId}`;
+    const agentResponse = await this.agentClientService.chat({
+      userId: senderId,
+      channel: 'zalo',
+      channelId,
+      threadId,
+      question: message,
+    });
     this.logger.log(
-      `[Zalo] Generated reply for user ${recipientId}: "${replyText}"`,
+      `[Zalo] Agent reply ready | User: ${senderId} | Thread: ${threadId} | Session: ${agentResponse.session_id}`,
     );
 
-    await this.sendReply(recipientId, replyText);
+    await this.sendReply(recipientId, agentResponse.answer);
     return 1;
   }
 

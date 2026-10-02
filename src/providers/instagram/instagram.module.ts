@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { ReplyMessageModule } from '../../services/reply-message/reply-message.module';
+import { AgentClientModule } from '../../services/agent-client/agent-client.module';
 import { InstagramController } from './instagram.controller';
 import { InstagramService } from './instagram.service';
 
 @Module({
-  imports: [ReplyMessageModule],
+  imports: [AgentClientModule],
   controllers: [InstagramController],
   providers: [InstagramService],
 })

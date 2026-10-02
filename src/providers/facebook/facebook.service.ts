@@ -2,7 +2,7 @@ import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { FacebookWebhookDto } from '../../dtos/facebook/facebook-webhook.dto';
-import { ReplyMessageService } from '../../services/reply-message/reply-message.service';
+import { AgentClientService } from '../../services/agent-client/agent-client.service';
 
 @Injectable()
 export class FacebookService {
@@ -10,7 +10,7 @@ export class FacebookService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly replyMessageService: ReplyMessageService,
+    private readonly agentClientService: AgentClientService,
   ) {}
 
   async handleWebhook(payload: FacebookWebhookDto): Promise<number> {
@@ -19,7 +19,7 @@ export class FacebookService {
     for (const entry of payload.entry ?? []) {
       for (const event of entry.messaging ?? []) {
         const senderId = event.sender?.id;
-        const pageId = event.recipient?.id;
+        const pageId = event.recipient?.id ?? entry.id;
         const messageText = event.message?.text?.trim();
         const mid = event.message?.mid;
         const isEcho = event.message?.is_echo;
@@ -29,9 +29,9 @@ export class FacebookService {
           continue;
         }
 
-        if (!senderId || !messageText) {
+        if (!senderId || !pageId || !messageText) {
           this.logger.warn(
-            `[Facebook] Ignored non-text or empty event (senderId: ${senderId || 'N/A'}, mid: ${mid || 'N/A'})`,
+            `[Facebook] Ignored incomplete event (senderId: ${senderId || 'N/A'}, pageId: ${pageId || 'N/A'}, mid: ${mid || 'N/A'})`,
           );
           continue;
         }
@@ -40,12 +40,19 @@ export class FacebookService {
           `[Facebook] Inbound message | User: ${senderId} -> Page: ${pageId || 'N/A'} | Mid: ${mid || 'N/A'} | Text: "${messageText}"`,
         );
 
-        const replyText = this.replyMessageService.create(messageText);
+        const threadId = `facebook:${pageId}:${senderId}`;
+        const agentResponse = await this.agentClientService.chat({
+          userId: senderId,
+          channel: 'facebook',
+          channelId: pageId,
+          threadId,
+          question: messageText,
+        });
         this.logger.log(
-          `[Facebook] Generated reply for user ${senderId}: "${replyText}"`,
+          `[Facebook] Agent reply ready | User: ${senderId} | Thread: ${threadId} | Session: ${agentResponse.session_id}`,
         );
 
-        await this.sendReply(senderId, replyText);
+        await this.sendReply(senderId, agentResponse.answer);
         messageCount += 1;
       }
     }

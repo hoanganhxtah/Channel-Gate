@@ -1,9 +1,10 @@
 # Channel Gate
 
-NestJS demo nhận webhook từ các messaging channel và phản hồi:
+NestJS service nhận webhook từ các messaging channel, gọi trực tiếp Agent
+Service và gửi câu trả lời của agent về đúng channel.
 
 ```text
-Đã nhận được tin nhắn "{message}" và đang xử lý
+Social webhook -> Channel Gate -> POST Agent Service /agent -> Social reply
 ```
 
 ## Structure
@@ -18,7 +19,9 @@ src/
 └── main.ts
 ```
 
-Mỗi provider giữ `controller`, `service` và `module` riêng. DTO webhook được gom theo channel trong `dtos/`. Token refresh chưa nằm trong scope demo.
+Mỗi provider giữ `controller`, `service` và `module` riêng. DTO webhook được gom
+theo channel trong `dtos/`. `AgentClientService` là HTTP client dùng chung để gọi
+Agent Service. Token refresh chưa nằm trong scope demo.
 
 ## Endpoints
 
@@ -38,3 +41,13 @@ npm run start:dev
 ```
 
 Sao chép `.env.example` thành `.env` và điền credentials của các channel cần chạy.
+
+Khi chạy toàn bộ service trực tiếp trên máy local:
+
+```env
+AGENT_SERVICE_URL=http://localhost:8001
+AGENT_SERVICE_TIMEOUT_MS=60000
+```
+
+`thread_id` được tạo ổn định theo `channel:channel_id:user_id`; `session_id` là
+UUID mới cho mỗi lần Channel Gate gọi Agent Service.

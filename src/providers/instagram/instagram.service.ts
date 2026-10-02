@@ -5,7 +5,7 @@ import {
   InstagramMessagingEventDto,
   InstagramWebhookDto,
 } from '../../dtos/instagram/instagram-webhook.dto';
-import { ReplyMessageService } from '../../services/reply-message/reply-message.service';
+import { AgentClientService } from '../../services/agent-client/agent-client.service';
 
 @Injectable()
 export class InstagramService {
@@ -13,7 +13,7 @@ export class InstagramService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly replyMessageService: ReplyMessageService,
+    private readonly agentClientService: AgentClientService,
   ) {}
 
   async handleWebhook(payload: InstagramWebhookDto): Promise<number> {
@@ -26,7 +26,7 @@ export class InstagramService {
       return 0;
     }
 
-    for (const event of events) {
+    for (const { event, channelId } of events) {
       const senderId = event.sender!.id!;
       const text = event.message!.text!.trim();
       const mid = event.message?.mid;
@@ -35,12 +35,19 @@ export class InstagramService {
         `[Instagram] Inbound message | User: ${senderId} | Mid: ${mid || 'N/A'} | Text: "${text}"`,
       );
 
-      const replyText = this.replyMessageService.create(text);
+      const threadId = `instagram:${channelId}:${senderId}`;
+      const agentResponse = await this.agentClientService.chat({
+        userId: senderId,
+        channel: 'instagram',
+        channelId,
+        threadId,
+        question: text,
+      });
       this.logger.log(
-        `[Instagram] Generated reply for user ${senderId}: "${replyText}"`,
+        `[Instagram] Agent reply ready | User: ${senderId} | Thread: ${threadId} | Session: ${agentResponse.session_id}`,
       );
 
-      await this.sendReply(senderId, replyText);
+      await this.sendReply(senderId, agentResponse.answer);
     }
 
     return events.length;
@@ -48,14 +55,19 @@ export class InstagramService {
 
   private extractMessageEvents(
     payload: InstagramWebhookDto,
-  ): InstagramMessagingEventDto[] {
+  ): Array<{ event: InstagramMessagingEventDto; channelId: string }> {
     return (payload.entry ?? [])
-      .flatMap((entry) => [
-        ...(entry.messaging ?? []),
-        ...(entry.standby ?? []),
-      ])
+      .flatMap((entry) =>
+        [...(entry.messaging ?? []), ...(entry.standby ?? [])].map(
+          (event) => ({
+            event,
+            channelId: event.recipient?.id ?? entry.id,
+          }),
+        ),
+      )
       .filter(
-        (event) =>
+        ({ event, channelId }) =>
+          Boolean(channelId) &&
           Boolean(event.sender?.id) &&
           Boolean(event.message?.text?.trim()) &&
           !event.message?.is_echo,
